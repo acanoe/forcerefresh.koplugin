@@ -14,13 +14,8 @@ function ForceRefresh:init()
 
     -- Load saved settings or use defaults
     self.enabled = G_reader_settings:readSetting("forcerefresh_enabled", false)
-    self.refresh_mode = G_reader_settings:readSetting("forcerefresh_mode", "full")
-
-    -- If plugin was enabled before, re-register the handler
-    if self.enabled then
-        self:registerPageTurnHandler()
-        logger.info("ForceRefresh: Restored enabled state with mode:", self.refresh_mode)
-    end
+    self.refresh_mode = G_reader_settings:readSetting("forcerefresh_mode", "flashui")
+    self.refresh_on_suspend = G_reader_settings:readSetting("forcerefresh_on_suspend", false)
 
     -- Add to main menu
     self.ui.menu:registerToMainMenu(self)
@@ -28,22 +23,30 @@ end
 
 function ForceRefresh:addToMainMenu(menu_items)
     menu_items.force_refresh = {
-        text = _("Force Page Refresh"),
-        sorting_hint = "more_tools",
+        text = _("Force refresh"),
+        sorting_hint = "tools",
         sub_item_table = {
             {
                 text = _("Enable forced refresh"),
                 checked_func = function()
                     return self.enabled
                 end,
-                check_callback_updates_menu = true,
-                callback = function(touchmenu_instance)
-                    self:toggleRefresh()
-                    UIManager:scheduleIn(0.1, function()
-                        touchmenu_instance:updateItems()
-                    end
-                    )
+                callback = function()
+                    self.enabled = not self.enabled
+                    G_reader_settings:saveSetting("forcerefresh_enabled", self.enabled)
+                    logger.info("ForceRefresh on page turn:", self.enabled)
                 end
+            },
+            {
+                text = _("Refresh on suspend/sleep"),
+                checked_func = function()
+                    return self.refresh_on_suspend
+                end,
+                callback = function()
+                    self.refresh_on_suspend = not self.refresh_on_suspend
+                    G_reader_settings:saveSetting("forcerefresh_on_suspend", self.refresh_on_suspend)
+                    logger.info("ForceRefresh on suspend:", self.refresh_on_suspend)
+                end,
             },
             {
                 text = _("Refresh mode"),
@@ -98,24 +101,10 @@ function ForceRefresh:addToMainMenu(menu_items)
     }
 end
 
--- Function to toggle the refresh feature
-function ForceRefresh:toggleRefresh()
-    self.enabled = not self.enabled
-    G_reader_settings:saveSetting("forcerefresh_enabled", self.enabled)
-
-    if self.enabled then
-        logger.info("Force refresh enabled with mode:", self.refresh_mode)
-        self:registerPageTurnHandler()
-    else
-        logger.info("Force refresh disabled")
-        self:unregisterPageTurnHandler()
-    end
-end
-
 -- Register plugin to a page turn event
-function ForceRefresh:registerPageTurnHandler()
-    self.onPageUpdate = function(this, pageno)
-        logger.dbg("ForceRefresh: page:", pageno, "mode:", self.refresh_mode)
+function ForceRefresh:onPageUpdate(page_number)
+    if self.enabled then
+        logger.dbg("ForceRefresh: page:", page_number, "mode:", self.refresh_mode)
 
         -- force refresh the page again after some time
         UIManager:scheduleIn(0.1, function()
@@ -128,11 +117,6 @@ function ForceRefresh:registerPageTurnHandler()
     end
 end
 
--- The opposite of the above
-function ForceRefresh:unregisterPageTurnHandler()
-    self.onPageUpdate = nil
-end
-
 -- Called when a document is opened
 function ForceRefresh:onReaderReady()
     -- do something here
@@ -140,8 +124,22 @@ end
 
 -- Called when a document is closed
 function ForceRefresh:onCloseDocument()
-    if self.enabled then
-        self:unregisterPageTurnHandler()
+    -- do something here
+end
+
+-- Called when device is about to suspend/sleep
+function ForceRefresh:onSuspend()
+    if self.refresh_on_suspend then
+        logger.dbg("ForceRefresh: Refreshing screen before suspend with mode:", self.refresh_mode)
+
+        -- force refresh the screen after some time
+        UIManager:scheduleIn(0.1, function()
+            UIManager:setDirty(self.ui, self.refresh_mode)
+        end
+        )
+
+        -- allow other handlers to handle this event
+        return false
     end
 end
 
