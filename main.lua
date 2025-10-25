@@ -1,31 +1,28 @@
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
-local DataStorage = require("datastorage")
 local logger = require("logger")
 local _ = require("gettext")
-local LuaSettings = require("luasettings")
 
 -- Plugin main class
 local ForceRefresh = WidgetContainer:extend {
     name = "forcerefresh",
-    is_doc_only = false, -- Only runs when a document is open
+    is_doc_only = true, -- Only runs when a document is open
 }
 
 function ForceRefresh:init()
     logger.info("ForceRefresh plugin initialized.")
 
-    -- Initialize settings file
-    self.settings_dir = DataStorage:getSettingsDir() .. "/forcerefresh"
-    self.settings = LuaSettings:open(self.settings_dir .. "/settings.lua")
-
     -- Load saved settings or use defaults
-    self.enabled = self.settings:readSetting("enabled", false)
-    self.refresh_mode = self.settings:readSetting("refresh_mode", "full")
+    self.enabled = G_reader_settings:readSetting("forcerefresh_enabled", false)
+    self.refresh_mode = G_reader_settings:readSetting("forcerefresh_mode", "full")
 
     -- If plugin was enabled before, re-register the handler
     if self.enabled then
         self:registerPageTurnHandler()
-        logger.info("ForceRefresh:Add to main menu
+        logger.info("ForceRefresh: Restored enabled state with mode:", self.refresh_mode)
+    end
+
+    -- Add to main menu
     self.ui.menu:registerToMainMenu(self)
 end
 
@@ -42,8 +39,10 @@ function ForceRefresh:addToMainMenu(menu_items)
                 check_callback_updates_menu = true,
                 callback = function(touchmenu_instance)
                     self:toggleRefresh()
-                    ffiutil.sleep(1)
-                    touchmenu_instance:updateItems()
+                    UIManager:scheduleIn(0.1, function()
+                        touchmenu_instance:updateItems()
+                    end
+                    )
                 end
             },
             {
@@ -56,8 +55,7 @@ function ForceRefresh:addToMainMenu(menu_items)
                         end,
                         callback = function()
                             self.refresh_mode = "full"
-                            self.settings:saveSetting("refresh_mode", "full")
-                            self.settings:flush()
+                            G_reader_settings:saveSetting("forcerefresh_mode", "full")
                             logger.info("ForceRefresh mode set to: full")
                         end,
                     },
@@ -68,8 +66,7 @@ function ForceRefresh:addToMainMenu(menu_items)
                         end,
                         callback = function()
                             self.refresh_mode = "partial"
-                            self.settings:saveSetting("refresh_mode", "partial")
-                            self.settings:flush()
+                            G_reader_settings:saveSetting("forcerefresh_mode", "partial")
                             logger.info("ForceRefresh mode set to: partial")
                         end,
                     },
@@ -80,8 +77,7 @@ function ForceRefresh:addToMainMenu(menu_items)
                         end,
                         callback = function()
                             self.refresh_mode = "flashui"
-                            self.settings:saveSetting("refresh_mode", "flashui")
-                            self.settings:flush()
+                            G_reader_settings:saveSetting("forcerefresh_mode", "flashui")
                             logger.info("ForceRefresh mode set to: flashui")
                         end,
                     },
@@ -92,8 +88,7 @@ function ForceRefresh:addToMainMenu(menu_items)
                         end,
                         callback = function()
                             self.refresh_mode = "flashpartial"
-                            self.settings:saveSetting("refresh_mode", "flashpartial")
-                            self.settings:flush()
+                            G_reader_settings:saveSetting("forcerefresh_mode", "flashpartial")
                             logger.info("ForceRefresh mode set to: flashpartial")
                         end,
                     },
@@ -106,8 +101,7 @@ end
 -- Function to toggle the refresh feature
 function ForceRefresh:toggleRefresh()
     self.enabled = not self.enabled
-    self.settings:saveSetting("enabled", self.enabled)
-    self.settings:flush()
+    G_reader_settings:saveSetting("forcerefresh_enabled", self.enabled)
 
     if self.enabled then
         logger.info("Force refresh enabled with mode:", self.refresh_mode)
